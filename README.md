@@ -1,100 +1,87 @@
-# Kubernetes (K8s)
+# UniCORE.Kubernetes
 
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/569/badge)](https://bestpractices.coreinfrastructure.org/projects/569) [![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes/kubernetes)](https://goreportcard.com/report/github.com/kubernetes/kubernetes) ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/kubernetes/kubernetes?sort=semver)
+**SCAFFOLD-ANCHOR repository — initial scaffold 2026-06-04.**
 
-<img src="https://github.com/kubernetes/kubernetes/raw/master/logo/logo.png" width="100">
+Full scaffolding, upstream-fork integration, and source-code work all pending a fresh dedicated kickoff arc. This initial commit exists to lock the repository's identity, licence position, and place in the UniCORE Sanity Check fleet so the work cannot be forgotten.
 
-----
+Author: **Bryan Fred, Unitek Systems Limited, Bedford, United Kingdom.**
+First commit: **2026-06-04 17:45 UTC.**
 
-Kubernetes, also known as K8s, is an open source system for managing [containerized applications]
-across multiple hosts. It provides basic mechanisms for the deployment, maintenance,
-and scaling of applications.
+---
 
-Kubernetes builds upon a decade and a half of experience at Google running
-production workloads at scale using a system called [Borg],
-combined with best-of-breed ideas and practices from the community.
+## What this repository is
 
-Kubernetes is hosted by the Cloud Native Computing Foundation ([CNCF]).
-If your company wants to help shape the evolution of
-technologies that are container-packaged, dynamically scheduled,
-and microservices-oriented, consider joining the CNCF.
-For details about who's involved and how Kubernetes plays a role,
-read the CNCF [announcement].
+`bryanunitek/UniCORE.Kubernetes` is the **Kubernetes** family member: On-prem-deployment-shape public gift surface. Documentation today; source code at certification.
 
-----
+**Family purpose:** Open-source container orchestration — UniCORE.GVB multi-node container scheduling.
 
-## To start using K8s
+---
 
-See our documentation on [kubernetes.io].
+## Upstream
 
-Take a free course on [Scalable Microservices with Kubernetes].
+- **Upstream project:** https://github.com/kubernetes/kubernetes
+- **Upstream licence:** Apache-2.0
+- **Our relationship:** Fork-and-extend. Upstream codebase is consumed verbatim under its original licence; our additions sit on top under CC BY 4.0.
 
-To use Kubernetes code as a library in other applications, see the [list of published components](https://git.k8s.io/kubernetes/staging/README.md).
-Use of the `k8s.io/kubernetes` module or `k8s.io/kubernetes/...` packages as libraries is not supported.
+The merge discipline that governs how this repository absorbs upstream changes is documented in [`UPSTREAM-MERGE-DISCIPLINE.md`](UPSTREAM-MERGE-DISCIPLINE.md).
 
-## To start developing K8s
+---
 
-The [community repository] hosts all information about
-building Kubernetes from source, how to contribute code
-and documentation, who to contact about what, etc.
+## Platforms
 
-If you want to build Kubernetes right away there are two options:
+Windows · Linux · macOS · iOS · Android
 
-##### You have a working [Go environment].
+---
 
-```
-git clone https://github.com/kubernetes/kubernetes
-cd kubernetes
-make
-```
+## Family — the four-repo pattern
 
-##### You have a working [Docker environment].
+UniCORE.Kubernetes is published as a **four-repo family**:
 
-```
-git clone https://github.com/kubernetes/kubernetes
-cd kubernetes
-make quick-release
-```
+- `bryanunitek/UniCORE.Kubernetes` — public on-prem-deployment-shape gift surface ← **this repo**
+- `bryanunitek/UniSaaS.UniCORE.Kubernetes` — public SaaS-deployment-shape gift surface
+- `bryanunitek/UniCORE.Kubernetes-Claw` (private) — on-prem-shape working repository
+- `bryanunitek/UniSaaS.UniCORE.Kubernetes-Claw` (private) — SaaS-shape working repository
 
-For the full story, head over to the [developer's documentation].
+---
 
-## Support
+## Status
 
-If you need support, start with the [troubleshooting guide],
-and work your way through the process that we've outlined.
+**SCAFFOLD-ANCHOR** as of 2026-06-04. See [`STATUS.md`](STATUS.md) for the full status breakdown.
 
-That said, if you have questions, reach out to us
-[one way or another][communication].
+---
 
-[announcement]: https://cncf.io/news/announcement/2015/07/new-cloud-native-computing-foundation-drive-alignment-among-container
-[Borg]: https://research.google.com/pubs/pub43438.html?authuser=1
-[CNCF]: https://www.cncf.io/about
-[communication]: https://git.k8s.io/community/communication
-[community repository]: https://git.k8s.io/community
-[containerized applications]: https://kubernetes.io/docs/concepts/overview/what-is-kubernetes/
-[developer's documentation]: https://git.k8s.io/community/contributors/devel#readme
-[Docker environment]: https://docs.docker.com/engine
-[Go environment]: https://go.dev/doc/install
-[kubernetes.io]: https://kubernetes.io
-[Scalable Microservices with Kubernetes]: https://www.udacity.com/course/scalable-microservices-with-kubernetes--ud615
-[troubleshooting guide]: https://kubernetes.io/docs/tasks/debug/
+## Files in this scaffold commit
 
-## Community Meetings 
+- [`README.md`](README.md) — this file
+- [`LICENSE.md`](LICENSE.md) — UniCORE additions licence
+- [`STATUS.md`](STATUS.md) — scaffold-anchor status
+- [`UPSTREAM-MERGE-DISCIPLINE.md`](UPSTREAM-MERGE-DISCIPLINE.md) — canonical merge discipline
+- [`AI-AUTHORSHIP.md`](AI-AUTHORSHIP.md) — AI authorship disclosure
 
-The [Calendar](https://www.kubernetes.dev/resources/calendar/) has the list of all the meetings in the Kubernetes community in a single location.
+---
 
-## Adopters
+## Related repositories — UniCORE programme
 
-The [User Case Studies](https://kubernetes.io/case-studies/) website has real-world use cases of organizations across industries that are deploying/migrating to Kubernetes.
+**Foundation triad (gift, public, CC BY 4.0):**
+- [`UniVERSE`](https://github.com/bryanunitek/UniVERSE) — programme
+- [`TrueAI`](https://github.com/bryanunitek/TrueAI) — Foundation (Nine Invariants)
+- [`UniCORE-AI`](https://github.com/bryanunitek/UniCORE-AI) — reference architecture (12 Levels)
 
-## Governance 
+**Implementation reference (deployment-shape pair):**
+- [`UniCORE`](https://github.com/bryanunitek/UniCORE) — on-prem-shape
+- [`UniSaaS.UniCORE`](https://github.com/bryanunitek/UniSaaS.UniCORE) — SaaS-shape
 
-Kubernetes project is governed by a framework of principles, values, policies and processes to help our community and constituents towards our shared goals.
+**Substrate-services layer (deployment-shape pair):**
+- [`UniCORE.GVB`](https://github.com/bryanunitek/UniCORE.GVB) — on-prem-shape
+- [`UniSaaS.UniCORE.GVB`](https://github.com/bryanunitek/UniSaaS.UniCORE.GVB) — SaaS-shape
 
-The [Kubernetes Community](https://github.com/kubernetes/community/blob/master/governance.md) is the launching point for learning about how we organize ourselves.
+---
 
-The [Kubernetes Steering community repo](https://github.com/kubernetes/steering) is used by the Kubernetes Steering Committee, which oversees governance of the Kubernetes project.
+## Contact
 
-## Roadmap 
+- **Public discussion:** [GitHub Discussions](https://github.com/bryanunitek/UniCORE.Kubernetes/discussions)
+- **Private contact / connection request:** [LinkedIn — Bryan Fred](https://www.linkedin.com/in/bryan-fred-02209753/)
 
-The [Kubernetes Enhancements repo](https://github.com/kubernetes/enhancements) provides information about Kubernetes releases, as well as feature tracking and backlogs.
+---
+
+*Author: Bryan Fred, Unitek Systems Limited, Bedford, United Kingdom. Public. Given, not sold. Irrevocable.*
