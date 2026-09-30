@@ -24,6 +24,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -451,6 +452,36 @@ func TestControllerSyncJob(t *testing.T) {
 			expectedSucceeded:  0,
 			expectedPodPatches: 0,
 			expectedReady:      ptr.To[int32](0),
+			controllerTime:     &referenceTime,
+		},
+		// Regression test for https://github.com/kubernetes/kubernetes/issues/139428.
+		// When replacement pods are needed but pod creation is deferred due to an
+		// active backoff, manageJob must report the actual active count rather than
+		// 0. Reporting 0 while Ready still reflects the running pods makes the status
+		// update fail apiserver validation ("cannot set more ready pods than active"),
+		// blocking finalizer removal and status flushing.
+		"too few active pods and active back-off with running pods": {
+			parallelism:  2,
+			completions:  2,
+			backoffLimit: 6,
+			backoffRecord: &backoffRecord{
+				failuresAfterLastSuccess: 1,
+				lastFailureTime:          &referenceTime,
+			},
+			initialStatus: &jobInitialStatus{
+				startTime: func() *time.Time {
+					now := time.Now()
+					return &now
+				}(),
+			},
+			activePods:         1,
+			readyPods:          1,
+			succeededPods:      0,
+			expectedCreations:  0,
+			expectedActive:     1,
+			expectedSucceeded:  0,
+			expectedPodPatches: 0,
+			expectedReady:      ptr.To[int32](1),
 			controllerTime:     &referenceTime,
 		},
 		"too few active pods and no back-offs": {
@@ -5377,6 +5408,52 @@ func TestSyncJobWithJobBackoffLimitPerIndex(t *testing.T) {
 				FailedIndexes:           ptr.To(""),
 			},
 		},
+		// Regression test for https://github.com/kubernetes/kubernetes/issues/139428.
+		// One index has a running pod while another index's replacement pod
+		// creation is deferred because its per-index backoff is still active.
+		// manageJob must report the actual active count (1) rather than 0; a
+		// status with active=0 while pods are still running is rejected by the
+		// apiserver ("cannot set more ready pods than active"), blocking
+		// finalizer removal and status flushing.
+		"replacement pod creation delayed by per-index backoff while another index runs": {
+			enableJobBackoffLimitPerIndex: true,
+			enableJobPodReplacementPolicy: true,
+			job: batch.Job{
+				TypeMeta:   metav1.TypeMeta{Kind: "Job"},
+				ObjectMeta: validObjectMeta,
+				Spec: batch.JobSpec{
+					Selector:             validSelector,
+					Template:             validTemplate,
+					Parallelism:          ptr.To[int32](2),
+					Completions:          ptr.To[int32](2),
+					BackoffLimit:         ptr.To[int32](math.MaxInt32),
+					CompletionMode:       ptr.To(batch.IndexedCompletion),
+					BackoffLimitPerIndex: ptr.To[int32](1),
+				},
+			},
+			pods: []v1.Pod{
+				*buildPod().uid("a").index("0").phase(v1.PodRunning).indexFailureCount("0").trackingFinalizer().Pod,
+				*buildPod().uid("b").index("1").status(v1.PodStatus{
+					Phase: v1.PodFailed,
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name: "x",
+							State: v1.ContainerState{
+								Terminated: &v1.ContainerStateTerminated{
+									FinishedAt: metav1.NewTime(now),
+								},
+							},
+						},
+					},
+				}).indexFailureCount("0").trackingFinalizer().Pod,
+			},
+			wantStatus: batch.JobStatus{
+				Active:                  1,
+				Terminating:             ptr.To[int32](0),
+				UncountedTerminatedPods: &batch.UncountedTerminatedPods{},
+				FailedIndexes:           new(string),
+			},
+		},
 		"single failed index due to exceeding the backoff limit per index, the job continues": {
 			enableJobBackoffLimitPerIndex: true,
 			enableJobPodReplacementPolicy: true,
@@ -8241,6 +8318,110 @@ func TestSyncJobPodSchedulingGroup(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSyncOrphanPodsBySelectorRetryOnFailure(t *testing.T) {
+	const podsCount = 3
+
+	_, ctx := ktesting.NewTestContext(t)
+	clientset := fake.NewClientset()
+	sharedInformers := informers.NewSharedInformerFactory(clientset, controller.NoResyncPeriodFunc())
+	manager, err := NewController(ctx, clientset, sharedInformers.Core().V1().Pods(), sharedInformers.Batch().V1().Jobs(), sharedInformers.Scheduling().V1alpha2().Workloads(), sharedInformers.Scheduling().V1alpha2().PodGroups())
+	if err != nil {
+		t.Fatalf("Error creating Job controller: %v", err)
+	}
+	manager.podStoreSynced = alwaysReady
+	manager.jobStoreSynced = alwaysReady
+	manager.podControl = &controller.FakePodControl{}
+
+	podInformer := sharedInformers.Core().V1().Pods().Informer()
+	go podInformer.RunWithContext(ctx)
+	cache.WaitForCacheSync(ctx.Done(), podInformer.HasSynced)
+
+	selector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			"app": "test",
+		},
+	}
+	selectorString, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		t.Fatalf("Error parsing pod label selector: %v", err)
+	}
+
+	var pods []*v1.Pod
+	for i := range podsCount {
+		pod := buildPod().name(fmt.Sprintf("pod%d", i+1)).ns("default").labels(selector.MatchLabels).deletionTimestamp().trackingFinalizer().Pod
+		pods = append(pods, pod)
+	}
+
+	podIndexer := podInformer.GetIndexer()
+	for _, pod := range pods {
+		if err := podIndexer.Add(pod); err != nil {
+			t.Fatalf("Failed to add pod to indexer: %v", err)
+		}
+	}
+
+	for _, pod := range pods {
+		_, err = clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Creating pod: %v", err)
+		}
+	}
+
+	orphanKey := orphanPodKey{
+		kind:      OrphanPodKeyKindSelector,
+		namespace: "default",
+		value:     selectorString.String(),
+	}
+
+	fakePodControl := manager.podControl.(*controller.FakePodControl)
+	fakePodControl.Err = errors.New("server temporarily unavailable")
+
+	err = manager.syncOrphanPod(ctx, orphanKey)
+	if err != nil {
+		t.Fatalf("syncOrphanPod should not return error even if some pods fail: %v", err)
+	}
+
+	if len(fakePodControl.Patches) != podsCount {
+		t.Errorf("Expected %d patch attempts (one for each pod), got %d", podsCount, len(fakePodControl.Patches))
+	}
+
+	fakePodControl.Patches = nil
+	fakePodControl.Err = nil
+
+	// Wait for the rate limiter backoff delay to expire before retrying.
+	// The default rate limiter uses exponential backoff with initial base delay of 5ms,
+	// but after multiple failures the backoff can extend to seconds. This sleep ensures
+	// that when we drain the queue below, the items are actually processable and not
+	// still blocked by When() returning a future time.
+	time.Sleep(2 * time.Second)
+
+	for range podsCount {
+		key, quit := manager.orphanQueue.Get()
+		if quit {
+			t.Fatalf("Queue unexpectedly empty")
+		}
+		if key.kind != OrphanPodKeyKindName {
+			t.Errorf("Expected requeued key kind to be %v, got %v", OrphanPodKeyKindName, key.kind)
+		}
+		manager.orphanQueue.Done(key)
+
+		err := manager.syncOrphanPod(ctx, key)
+		if err != nil {
+			t.Fatalf("syncOrphanPod failed on retry: %v", err)
+		}
+	}
+
+	if len(fakePodControl.Patches) != podsCount {
+		t.Errorf("Expected %d patch attempts on retry, got %d", podsCount, len(fakePodControl.Patches))
+	}
+
+	for i, patch := range fakePodControl.Patches {
+		patchStr := string(patch)
+		if !strings.Contains(patchStr, "$deleteFromPrimitiveList/finalizers") || !strings.Contains(patchStr, batch.JobTrackingFinalizer) {
+			t.Errorf("Patch %d: expected finalizer removal patch, got %s", i, patchStr)
+		}
 	}
 }
 

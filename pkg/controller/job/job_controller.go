@@ -430,7 +430,7 @@ func (jm *Controller) addPod(logger klog.Logger, obj interface{}) {
 	// Otherwise, it's an orphan.
 	// Clean the finalizer.
 	if hasJobTrackingFinalizer(pod) {
-		jm.enqueueOrphanPod(pod)
+		jm.enqueueOrphanPod(pod, false)
 	}
 	// Get a list of all matching controllers and sync
 	// them to see if anyone wants to adopt it.
@@ -503,7 +503,7 @@ func (jm *Controller) updatePod(logger klog.Logger, old, cur interface{}) {
 	// Otherwise, it's an orphan.
 	// Clean the finalizer.
 	if hasJobTrackingFinalizer(curPod) {
-		jm.enqueueOrphanPod(curPod)
+		jm.enqueueOrphanPod(curPod, false)
 	}
 	// If anything changed, sync matching controllers
 	// to see if anyone wants to adopt it now.
@@ -546,7 +546,7 @@ func (jm *Controller) deletePod(logger klog.Logger, obj interface{}, final bool)
 		// No controller should care about orphans being deleted.
 		// But this pod might have belonged to a Job and the GC removed the reference.
 		if hasFinalizer {
-			jm.enqueueOrphanPod(pod)
+			jm.enqueueOrphanPod(pod, false)
 		}
 		return
 	}
@@ -554,7 +554,7 @@ func (jm *Controller) deletePod(logger klog.Logger, obj interface{}, final bool)
 	if job == nil || util.IsJobFinished(job) {
 		// syncJob will not remove this finalizer.
 		if hasFinalizer {
-			jm.enqueueOrphanPod(pod)
+			jm.enqueueOrphanPod(pod, false)
 		}
 		return
 	}
@@ -717,13 +717,17 @@ func (jm *Controller) enqueueSyncJobInternal(logger klog.Logger, obj interface{}
 	jm.queue.AddAfter(key, delay)
 }
 
-func (jm *Controller) enqueueOrphanPod(obj *v1.Pod) {
+func (jm *Controller) enqueueOrphanPod(obj *v1.Pod, backoff bool) {
 	orphanPodKey := orphanPodKey{
 		kind:      OrphanPodKeyKindName,
 		namespace: obj.Namespace,
 		value:     obj.Name,
 	}
-	jm.orphanQueue.Add(orphanPodKey)
+	if backoff {
+		jm.orphanQueue.AddRateLimited(orphanPodKey)
+	} else {
+		jm.orphanQueue.Add(orphanPodKey)
+	}
 }
 
 // worker runs a worker thread that just dequeues items, processes them, and marks them done.
@@ -818,6 +822,7 @@ func (jm *Controller) syncOrphanPodsBySelector(ctx context.Context, namespace st
 	for _, pod := range pods {
 		if err := jm.handleSingleOrphanPod(ctx, pod); err != nil {
 			logger.Error(err, "syncing orphan pod failed", "pod", klog.KObj(pod))
+			jm.enqueueOrphanPod(pod, true)
 		}
 	}
 	return nil
@@ -1855,7 +1860,12 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 		}
 		if remainingTime > 0 {
 			jm.enqueueSyncJobWithDelay(logger, job, remainingTime)
-			return 0, metrics.JobSyncActionPodsCreated, nil
+			// No pods were created or deleted, so return the current active
+			// count rather than 0. Returning 0 here would cause the status
+			// update to set Active=0 while Ready still reflects the running
+			// pods, which the API server rejects ("cannot set more ready pods
+			// than active"), blocking finalizer removal and status flushing.
+			return active, metrics.JobSyncActionPodsCreated, nil
 		}
 		if diff > int32(MaxPodCreateDeletePerSync) {
 			diff = int32(MaxPodCreateDeletePerSync)
@@ -1868,7 +1878,9 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, jobCtx *syn
 				indexesToAdd, remainingTime = jm.getPodCreationInfoForIndependentIndexes(logger, indexesToAdd, jobCtx.podsWithDelayedDeletionPerIndex)
 				if remainingTime > 0 {
 					jm.enqueueSyncJobWithDelay(logger, job, remainingTime)
-					return 0, metrics.JobSyncActionPodsCreated, nil
+					// No pods were created or deleted, so return the current
+					// active count rather than 0 (see comment above).
+					return active, metrics.JobSyncActionPodsCreated, nil
 				}
 			}
 			diff = int32(len(indexesToAdd))
